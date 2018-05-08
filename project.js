@@ -46,7 +46,7 @@ var div = d3.select("body").append("div")
 
 
 // Read in data, populate data structures, call viz.
-d3.csv("../Data/toUse_01.csv", function(error, data) {
+d3.csv("toUse_01.csv", function(error, data) {
 
 	if (error) {throw error};
 
