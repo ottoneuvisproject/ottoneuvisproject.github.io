@@ -22,12 +22,17 @@ var main_g = svg.append("g")
 var line_g = svg.append("g")
 		   .attr("transform", "translate(" + 500 + "," + 50 + ")"); // fix later (to be based on bar chart)
 
+// Create line group
+var clear_button = svg.append("g")
+		   .attr("transform", "translate(" + 500 + "," + 50 + ")"); // fix later (to be based on bar chart)
+
 // Data structures
 var players = [];
 var teams = {};
 
 // Click status buttons
-var pos_clicked;
+var pos_clicked = initializePosClick();
+
 var own_clicked = [ ["All", true], ["Free Agent", false], ["Owned", false]];
 
 // All possible positions
@@ -41,7 +46,7 @@ var div = d3.select("body").append("div")
 
 
 // Read in data, populate data structures, call viz.
-d3.csv("toUse_01.csv", function(error, data) {
+d3.csv("../Data/toUse_01.csv", function(error, data) {
 
 	if (error) {throw error};
 
@@ -64,7 +69,7 @@ d3.csv("toUse_01.csv", function(error, data) {
 			fpts_atc: +d.fpts_atc,
 			fpts_depthcharts: +d.fpts_depthCharts,
 			fpts_hist: [[2010, +d.fpts10], [2011, +d.fpts11], [2012, +d.fpts12], [2013, +d.fpts13], [2014, +d.fpts14], [2015, +d.fpts15], [2016, +d.fpts16], [2017, +d.fpts17]],
-			fpts_forLine: [ [ [2017, +d.fpts17], [2018, +d.fpts_steamer] ], [ [2017, +d.fpts17], [2018, +d.fpts_depthCharts] ], [ [2017, +d.fpts17], [2018, +d.fpts_steamer600] ], [ [2017, +d.fpts17], [2018, +d.fpts_zips] ], [ [2017, +d.fpts17], [2018, +d.fpts_atc] ], [ [2017, +d.fpts17], [2018, +d.fpts_thebat] ], ],
+			fpts_proj: [ [ [2017, +d.fpts17], [2018, +d.fpts_steamer] ], [ [2017, +d.fpts17], [2018, +d.fpts_depthCharts] ], [ [2017, +d.fpts17], [2018, +d.fpts_steamer600] ], [ [2017, +d.fpts17], [2018, +d.fpts_zips] ], [ [2017, +d.fpts17], [2018, +d.fpts_atc] ], [ [2017, +d.fpts17], [2018, +d.fpts_thebat] ], ],
 			mlbTeam: d.team,
 			fantasyTeam: d.fantasyteam,
 			salary: +d.salary,
@@ -80,7 +85,8 @@ d3.csv("toUse_01.csv", function(error, data) {
 			shortstop: +d.short,
 			outfield: +d.outfield,
 			util: +d.utility,
-			filtered: 1
+			filtered: 1, 
+			clicked: false
 		};
 
 		players.push(player); // add player to array of players
@@ -116,7 +122,7 @@ d3.csv("toUse_01.csv", function(error, data) {
 	// set inner_x domain – from years 2010 to 2018
 	inner_x.domain([2010, 2018]);
 
-	// set inner_y domain – fpts_proj
+	// set inner_y domain – fpts_avg
 	inner_y.domain([0, 1500]);
 
 	createBarChart();
@@ -131,7 +137,6 @@ function createBarChart() {
 	 .attr("transform", "translate(0," + height + ")")
 	 .call(d3.axisBottom(x).tickValues([])) // create x-axis
 	 .append("text")
-	 .attr("transform","translate(" + width/2 + " ," +(height+margin.top) + ")")
 	 .style("text-anchor","middle")
 	 .text("Player"); // TODO: doesn't work
 
@@ -165,7 +170,7 @@ function createBarChart() {
      .on("click",function(d){ // Make line chart
      	if (d.filtered == 1) {
      		eraseLineChart(); // TODO: keep this? Or enable multiple players to be clicked? 
-     		draw([d.playerid]); // Draw the line chart associated with the playerid 
+     		draw([d]); // Draw the line chart associated with the playerid 
      		highlightPlayer(d.name.toLowerCase(), true); // highlight the bar of that player
      	}
      })
@@ -182,24 +187,29 @@ function createBarChart() {
 
 	     	d3.select(this)
 	     		.style("fill", "white");	
-     	}
+     	} 
 
      })
      .on("mouseout",function(d){
 
      	// Tooltips
 	    if(d.filtered==1){	
+
 		    div.transition()
 		    	.duration(0)
 		     	.style("opacity",0);
 
 		    d3.select(this)
 		     	.style("fill",function(d){
-		     		if (d.fantasyTeam == "Free Agent") {
-			   			return d3.rgb(245, 206, 148);
-			   		} else {
-			   			return d3.rgb(94, 157, 120);
-			   		}
+		     		if (d.clicked) {
+		     			return "yellow";
+		     		} else {
+		     			if (d.fantasyTeam == "Free Agent") {
+			   				return d3.rgb(245, 206, 148);
+			   			} else {
+			   				return d3.rgb(94, 157, 120);
+			   			}
+		     		}
 		     	})
 	     }
     })
@@ -259,7 +269,7 @@ function resetOwnershipButtons(clickedButton) {
 	createBarChart();
 }
 
-function createOwnershipFilter(clickedButton) {
+function createOwnershipFilter() {
 
 	// Add clickable circle
 	main_g.selectAll("circle_ownership")
@@ -298,18 +308,8 @@ function createOwnershipFilter(clickedButton) {
 		  		});
 
 		  		// Highlight certain players & change clicked status
-		  		if (d[0] === "All") {
-		  			own_clicked[0][1] = true;
-		  			resetBars();
-		  		} 
-		  		if (d[0] === "Free Agent") {
-		  			own_clicked[1][1] = true;
-		  			filterBars(true);
-		  		}
-		  		if (d[0] === "Owned") {
-		  			own_clicked[2][1] = true;
-		  			filterBars(false);
-		  		}
+		  		restoreBars();
+		  		filter_by_position();
 		  	})
 		  	.on("mouseover", function(d) {
 		  		// darken color
@@ -360,17 +360,21 @@ function resetPositionalButtons() {
 	createBarChart();
 }
 
-function createPositionalFilter() {
-
+function initializePosClick() {
 	// to store whether the positions are clicked or not
-	pos_clicked = [];
-
+	var pos_clicked = [];
 	var positions_abbr = ["SP", "RP", "C", "1B", "2B", "3B", "SS", "OF", "U"];
+	var positions = ["sp", "rp", "c", "first", "second", "third", "shortstop", "outfield", "util"];
 
 	// initialize all positions to clicked. 
 	for (i in positions_abbr) {
 		pos_clicked[i] = [positions_abbr[i], false, positions[i]]; 
 	}
+
+	return pos_clicked;
+}
+
+function createPositionalFilter() {
 
 	// make circle
 	main_g.selectAll("circle_positional")
@@ -383,7 +387,14 @@ function createPositionalFilter() {
 		})
 		.attr("cx", 330)
 		.attr("r", 8)
-		.attr("fill", "white")
+		.attr("fill", function(d) {
+			if (d[1]) {
+				d3.select(this).style("fill", "black");
+			} else {
+				d3.select(this).style("fill", "white");
+			}
+			makePositionalTitles();
+		})
 		.attr("stroke-width", .7)
 		.attr("stroke", "black")
 		.on("mouseover", function(d) {
@@ -444,15 +455,14 @@ function makePositionalTitles() {
 
 // Draw line chart
 
-// PARAMETERS: playerstoDraw is an array of ids 
-					// TODO: Change this to player objects? 
+// PARAMETERS: playersToDraw is an array of player objects 
 function draw(playersToDraw) {
 
 	// Create axes
 	line_g.append("g")
 	 .attr("class", "axis axis--x")
 	 .attr("transform", "translate(0," + 200 + ")")
-	 .call(d3.axisBottom(inner_x))
+	 .call(d3.axisBottom(inner_x).tickFormat(d3.format("d")))
 	 .append("text")
      .attr("y", 22)
      .attr("x", 325)
@@ -471,116 +481,88 @@ function draw(playersToDraw) {
      .attr("fill", "#000")
      .text("Fantasy Points");
 
+    // Draw erase button
+
     // define the line
     var drawLine = d3.line()
-	    			 .x(function(d) {
-	    			 	return inner_x(d[0]);
+	    			 .x(function(d) { // d here being [ [2010, fpts_2010], [2011, fpts_2011], ...]
+	    			 	return inner_x(d[0]); // Year [2010, 2011...]
 	    			 })
 	    			 .y(function(d) {
-	    			 	return inner_y(d[1]);
+	    			 	return inner_y(d[1]); // FPts [fpts_10, fpts_11, ...]
 	    			 });
 
-	// this will eventually just be the parameter, playersToDraw
-	var pToDraw = [];
-
-	for (i in playersToDraw) {						// for each ID to draw
-		var id = playersToDraw[i];					// id to draw
-		var p;										// player to draw
-		for (j in players) {
-			if (players[j].playerid == id) {
-				p = players[j];						// find that player
-			}
-		}
-		pToDraw[i] = p;
-	}
-
+	var hist_lines = line_g.selectAll("hist_line")
+				      .data(playersToDraw)
+				      .enter()
+				      .append("g")
+				      .attr("class", "hist_line");
 
 	// Draw the "history" line
-	line_g.append("path")
-		.data(pToDraw)
+	hist_lines.append("path")
 		.attr("class", "line")
 		.attr("fill", "none")
-		.attr("d", drawLine(p.fpts_hist))
+		.attr("d", function(d) {
+			if (d != null) {
+				return drawLine(d.fpts_hist);
+			}
+		})
 		.style("stroke", function(d) {
-     		if (d.fantasyTeam == "Free Agent") {
-	   			return d3.rgb(245, 206, 148);
-	   		} else {
-	   			return d3.rgb(94, 157, 120);
-	   		}
+
+			if (d != null) {
+				if (d.fantasyTeam == "Free Agent") {
+	   				return d3.rgb(245, 206, 148);
+		   		} else {
+		   			return d3.rgb(94, 157, 120);
+		   		}
+			}
+
 	     })
    		.style("stroke-width", "1.5px");
 
+   for (i in playersToDraw) {
+   		if (playersToDraw[i] != null) {
+   			var currentPlayer = playersToDraw[i];
 
+		    var proj_lines = line_g.selectAll("proj_line")
+						  .data(playersToDraw[i].fpts_proj)
+						  .enter()
+						  .append("g")
+						  .attr("class", "proj_line");
 
-	// draw all players listed
-	for (i in playersToDraw) {						// for each ID to draw
-		id = playersToDraw[i];					// id to draw
-		p;										// player to draw
-		for (j in players) {
-			if (players[j].playerid == id) {
-				p = players[j];						// find that player
-			}
-		}
+	   		proj_lines.append("path")
+	  			 .attr("class", "line")
+	  			 .attr("fill", "none")
+	  			 .attr("d", function(d) {
+	  			 	if (d != null) {
+						return drawLine(d); // [ [2017, fpts_17], [2018, fpts_ZIPS] ]
+					}
+	  			 })
+	  			 .style("stroke-dasharray", ("3, 3"))
+	    		 .style("stroke", function(d) {
+			     		if (currentPlayer.fantasyTeam == "Free Agent") {
+				   			return d3.rgb(245, 206, 148);
+				   		} else {
+				   			return d3.rgb(94, 157, 120);
+				   		}
+			     	})
+		   		 .style("stroke-width", "1.5px");
 
-		// combine the two to use below
-		var packaged_2 = [[ p.fpts_hist[7], [2018, p.fpts_depthcharts] ], [ p.fpts_hist[7], [2018, p.fpts_steamer] ],[ p.fpts_hist[7], [2018, p.fpts_thebat] ],[ p.fpts_hist[7], [2018, p.fpts_steamer600] ], [ p.fpts_hist[7], [2018, p.fpts_zips] ],[ p.fpts_hist[7], [2018, p.fpts_atc] ]]; // p.fpts_hist[7] gives 2017 fpts
-
-	   	// draw the projected part of the line
-
-	   	var projectionNames = ["D", "S", "B", "6", "Z", "A"];
-
-	   	// each projection
-	   	for (var i = 0; i < projectionNames.length; i++) {
-	   		line_g.append("path")
-    		.data(projectionNames[i])
-    		.attr("class", ".projected_line")
-    		.attr("fill", "none")
-    		.attr("d", drawLine(packaged_2[i]))
-    		.style("stroke-dasharray", ("3, 3"))
-    		.style("stroke", function(d) {
-		     		if (p.fantasyTeam == "Free Agent") {
-			   			return d3.rgb(245, 206, 148);
-			   		} else {
-			   			return d3.rgb(94, 157, 120);
-			   		}
-		     	})
-	   		.style("stroke-width", "1.5px")
-	   		.on("mouseover", function(d) { // this is a TERRRRRIIIIBLLLLEEE way to do this. 
-	   			if (d == "D") {
-	   				console.log("Depth Charts");
-	   			}
-	   			if (d == "S") {
-	   				console.log("Steamer");
-	   			}
-	   			if (d == "B") {
-	   				console.log("The Bat");
-	   			}
-	   			if (d == "6") {
-	   				console.log("Steamer 600");
-	   			}
-	   			if (d == "Z") {
-	   				console.log("ZIPS");
-	   			}
-	   			if (d == "A") {
-	   				console.log("ATC");
-	   			}
-	   		});
-	   	}
-
-	   	var t = line_g.append("text")
-		    .attr("y", inner_y(p.fpts_avg) - 5)
-		    .attr("x", 345) // make general somehow
-		    .attr("dy", "0.71em")
-		    .style("font", "10px sans-serif")
-		    .attr("fill", function(d) {
-		    	if (p.fantasyTeam == "Free Agent") {
-			   		return d3.rgb(245, 206, 148);
-			   	} else {
-			   		return d3.rgb(94, 157, 120);
-			   	}
-		    })
-		    .text(p.name);
-	}				
+		   	line_g.append("text")
+			    .attr("y", inner_y(currentPlayer.fpts_avg) - 5)
+			    .attr("x", 345)
+			    .attr("dy", "0.71em")
+			    .style("font", "10px sans-serif")
+			    .attr("fill", function(d) {
+			    	if (currentPlayer.fantasyTeam == "Free Agent") {
+				   		return d3.rgb(245, 206, 148);
+				   	} else {
+				   		return d3.rgb(94, 157, 120);
+				   	}
+			    })
+			    .text(currentPlayer.name);
+   		}
+   }		
 }
 
 // 
@@ -604,14 +586,24 @@ d3.select("#recommender")
 		var selected = document.getElementById("recommender");
 		var team = selected.options[selected.selectedIndex].value;
 		if (team != "Free Agent") {
-			var rec = getRecommendation(team)["player"].playerid;
-			var inc = getRecommendation(team)["incumbent"].playerid;
+
+			// should just be player objects! 
+			var rec = getRecommendation(team)["player"];
+			var inc = getRecommendation(team)["incumbent"]; // sometimes null
+
 			eraseLineChart(); // erase the previous to prevent pile-up
+
 			draw([rec, inc]);
-			highlightPlayer(getRecommendation(team)["player"].name.toLowerCase(), true, getRecommendation(team)["incumbent"].name.toLowerCase());
+
+			if (inc != null) {
+				highlightPlayer(rec.name.toLowerCase(), true, inc.name.toLowerCase());
+			} else {
+				highlightPlayer(rec.name.toLowerCase(), true); // just highlight recommended player
+			}
+			
 		} else {
 			eraseLineChart();
-			resetBars();
+			restoreBars();
 		}
 	})
 
@@ -622,42 +614,76 @@ d3.select("#searchInput")
 		getPlayerInfo(query);
 	})
 
+// Get what ownership button is clicked 
+function getOwnershipStatus() {
+	var own_status;
+
+	if (own_clicked[0][1]) {
+		own_status = "All";
+	}
+
+	if (own_clicked[1][1]) {
+		own_status = "Free Agent";
+	}
+
+	if (own_clicked[2][1]) {
+		own_status = "Owned";
+	}
+
+	return own_status;
+}
+
 // Filter by Position
 function filter_by_position() {
 
+	// See if any boxes are checked
 	var no_boxes_checked = true;
 	for (i in pos_clicked) {
-		if (pos_clicked[i][1]) { // ["catcher", TRUE]
+		if (pos_clicked[i][1]) {
 			no_boxes_checked = false;
 			break;
 		}
 	}
 
 	if (no_boxes_checked) {
-		resetBars()
+		restoreBars();
 	} else {
 		svg.selectAll("rect")
 			   .data(players)
 			   .style("fill", function(d) {
 
+			   		// RECALL: 
+			   		// var own_clicked = [ ["All", true], ["Free Agent", false], ["Owned", false]];
+
+			   		var player_status = "Free Agent";
+
+			   		if (d.fantasyTeam != "Free Agent") {
+			   			player_status = "Owned";
+			   		}
+
+			   		var own_status = getOwnershipStatus();
+
 			   		var elig = false;													// highlight this player's bar? 
+
 			   		for (i in pos_clicked) { 											// for each position that player plays
-			   			if (pos_clicked[i][1] == true && d[pos_clicked[i][2]] == 1) {	// if that box is checked
-			   				elig = true;												// we'll highlight that bar
-			   				break;
+			   			if (pos_clicked[i][1] == true && d[pos_clicked[i][2]] == 1) {	// if that positional box is checked
+			   				
+			   				if (player_status == own_status || own_status == "All") {	// if the "All" flag is clicked or if the player's status matches the clicked statuss
+			   					elig = true;											// we'll highlight that bar
+			   					break;
+			   				}
+
 			   			}
 			   		}
 
 			   		if (elig) {
-				   		if (d.fantasyTeam == "Free Agent" && (own_clicked[0][1] || own_clicked[1][1]))  { // if the player is a free agent && the "free agent" flag OR the "all" flag is TRUE 
+			   			d.filtered = 1;
+				   		if (player_status == "Free Agent")  { 
 				   			return d3.rgb(245, 206, 148);
 				   		} 
-				   		if (d.fantasyTeam == "Owned" && (own_clicked[0][1] || own_clicked[2][1])) { // if the player is owned && the "owned" flag OR the "all" flag is TRUE 
+				   		if (player_status == "Owned") {
 				   			return d3.rgb(94, 157, 120);
-				   		} else {
-			   				d.filtered = 0;
-			   				return d3.rgb(245, 245, 245);
-			   			}
+				   		}
 			   		} else {
 			   			d.filtered = 0;
 			   			return d3.rgb(245, 245, 245);
@@ -714,7 +740,16 @@ function getRecommendation(fantasyTeam) {
 		for (j in positions) { // for each position
 
 			if (fa[i][positions[j]] == 1) { // check if he is eligible for the position
-				var diff = fa[i].fpts_avg - incumbents[positions[j]].fpts_avg;
+
+				var upgrade = fa[i].fpts_avg;
+				var current = 0;
+
+				if (incumbents[positions[j]] != null) {
+					current = incumbents[positions[j]].fpts_avg;
+				}
+
+				var diff = upgrade - current; 
+
 				if (diff > top.value_added) {
 					top["player"] = fa[i];
 					top["value_added"] = diff;
@@ -730,18 +765,17 @@ function getRecommendation(fantasyTeam) {
 // Get player Information
 function getPlayerInfo(playerName) {
 	// display info
-	var found = false; // for reset
-	var foundID; 
+	var found = false;
+	var p = null; 
 	for (i in players) {
 		if (playerName === players[i].name.toLowerCase()) {
-			foundID = players[i].playerid;
+			p = players[i];
 			var found = true;
 			break; 
 		}
 	}
 	if (found) {
-		eraseLineChart();
-		draw([foundID]);
+		draw([p]);
 	}
 	highlightPlayer(playerName, found);
 }
@@ -754,22 +788,33 @@ function highlightPlayer(upgrade, found, incumbent) {
 		   .data(players)
 		   .style("fill", function(d) {
 		   		if (d.name.toLowerCase() === upgrade || d.name.toLowerCase() === incumbent) {
-		   			d.filtered = 1;
-		   			// color natural color
-		   			if (d.fantasyTeam == "Free Agent") {
-				   			return d3.rgb(245, 206, 148);
-				   		} else {
-				   			return d3.rgb(94, 157, 120);
-				   		}
+		   			d.clicked = true; 
+				   	return "yellow";
 		   		}
 		   		else {
-		   			d.filtered = 0;
-		   			return d3.rgb(245, 245, 245);
+		   			d.clicked = false; 
+		   			if (d.fantasyTeam == "Free Agent") {
+				   			return d3.rgb(245, 206, 148);
+				   	} else {
+				   		return d3.rgb(94, 157, 120);
+				   	}
 		   		}
 		   });
 	} else { // reset back to original color scheme
+		restoreBars();
+	}
+}
+
+// restore bars based on which ownership filter is applied
+function restoreBars() {
+	if (own_clicked[1][1]) {
+		filterBars(true);
+	}
+	if (own_clicked[2][1]) {
+		filterBars(false);
+	}
+	if (own_clicked[0][1]){
 		resetBars();
-		eraseLineChart();
 	}
 }
 
@@ -794,6 +839,7 @@ function filterBars(isFreeAgent) {
 	   .data(players)
 	   .style("fill", function(d) {
 	   		if (d.fantasyTeam === "Free Agent") {
+	   			d.filtered = 0;
 	   			return d3.rgb(245, 245, 245);
 	   		} else {
 	   			d.filtered = 1;
