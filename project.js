@@ -107,12 +107,12 @@ d3.csv("toUse_01.csv", function(error, data) {
 		}
 	})
 
-	// set bar chart domain ("playerid")
+	// set X bar chart domain ("playerid")
 	x.domain(data.map(function(d) {
 		return d.playerid;
 	}));
 
-	// set bar chart domain ("fpts")
+	// set Y bar chart domain ("fpts")
 	y.domain([0,
 		d3.max(players, function(d) {
 			return d.fpts_avg;
@@ -169,7 +169,6 @@ function createBarChart() {
      .on("click",function(d){ // Make line chart
      	d.clicked = true;
      	if (d.displayed == 1) {
-     		//restoreLineChart(); // TODO: keep this? Or enable multiple players to be clicked? 
      		draw([d]); // Draw the line chart associated with the player
      		restoreBars(false);
      	}
@@ -420,6 +419,7 @@ function createPositionalFilter() {
 }
 
 // Necessary to be separate in order to switch color on click
+// TODO add clickable text
 function makePositionalTitles() {
 	main_g.selectAll("pos_title")
 		.data(pos_clicked)
@@ -625,9 +625,11 @@ function restoreBars(unclickAll) {
 	   		// for a total reset
 	   		if (unclickAll) {
 	   			d.clicked = false; 
+	   			d.displayed = 0; 
 	   		}
 
 	   		if (d.clicked) { // if the player's line graph is displayed
+	   			d.displayed = 1; 
 	   			return "yellow";
 
 	   		} else {
@@ -672,22 +674,26 @@ function restoreBars(unclickAll) {
 // LISTENER (recommendation)
 d3.select("#recommender")
 	.on("change",function(){
+		restoreBars(true);
+
 		var selected = document.getElementById("recommender");
 		var team = selected.options[selected.selectedIndex].value;
 		if (team != "Free Agent") {
 
-			// should just be player objects! 
 			var rec = getRecommendation(team)["player"];
 			var inc = getRecommendation(team)["incumbent"]; // sometimes null
 
-			restoreLineChart(); // erase the previous to prevent pile-up
+			// erase the previous to prevent pile-up
+			restoreLineChart();
 
+			// draw the two on the line graph
 			draw([rec, inc]);
 
+			// highlight the recommended player
+			highlightPlayer(rec);
+
 			if (inc != null) {
-				highlightPlayer(true, rec.name.toLowerCase(), inc.name.toLowerCase());
-			} else {
-				highlightPlayer(true, rec.name.toLowerCase()); // just highlight recommended player
+				highlightPlayer(inc);
 			}
 			
 		} else {
@@ -700,7 +706,7 @@ d3.select("#recommender")
 d3.select("#searchInput")
 	.on("change", function(){
 		var query = document.getElementById("searchInput").value.toLowerCase();
-		getPlayerInfo(query);
+		handlePlayerSearch(query);
 	})
 
 // Get what ownership button is clicked 
@@ -750,6 +756,7 @@ function positionEligible(player) {
 }
 
 // Get top players of a given team at each position
+// Returns a dictionary –> top_by_pos["sp"] = player object
 function getCurrentTops(fantasyTeam) {
 
 	var top_by_pos = {} // array of top players by position
@@ -757,7 +764,7 @@ function getCurrentTops(fantasyTeam) {
 	for (i in positions) {
 		top_by_pos[positions[i]] = null;
 		try { // make sure the team has the position
-			top_by_pos[positions[i]] = teams[fantasyTeam][positions[i]].sort(function(a, b) {return b.fpts_avg - a.fpts_avg})[0]; // get best sp
+			top_by_pos[positions[i]] = teams[fantasyTeam][positions[i]].sort(function(a, b) {return b.fpts_avg - a.fpts_avg})[0]; // get best player @ that position
 		} catch (error) {
 			console.log(error); // log
 		}
@@ -766,11 +773,9 @@ function getCurrentTops(fantasyTeam) {
 	return top_by_pos;
 }
 
-// get all free agents
+// Returns an array of all Free Agents
 function getFreeAgents() {
-
 	var fa = [];
-
 	var itr = 0; 
 	for (i in players) {
 		if (players[i].fantasyTeam === "Free Agent") {
@@ -820,63 +825,32 @@ function getRecommendation(fantasyTeam) {
 	return(top);
 }
 
-// Draw & Highlight
-function getPlayerInfo(playerName) {
+// Draw & Highlight if found
+function handlePlayerSearch(playerName) {
 	var found = false;
-	var p = null; 
+	var p = []; // could be multiple players with the same name found (i.e., Jose Ramirez) 
+	var j = 0; // index of the p array
 	for (i in players) {
 		if (playerName === players[i].name.toLowerCase()) {
-			p = players[i];
+			p[j] = players[i];
 			var found = true;
-			break; 
+			j++;
 		}
 	}
 	if (found) {
-		draw([p]);
+		draw(p);
+		for (k in p) {
+			highlightPlayer(p[k]);
+		}
 	}
-	highlightPlayer(found, playerName);
 }
 
-// highlights that specific players
-function highlightPlayer(found, upgrade, incumbent) {
-	// highlight player
-	if (found) {
-		svg.selectAll("rect")
-		   .data(players)
-		   .style("fill", function(d) {
-		   		if (d.name.toLowerCase() === upgrade || d.name.toLowerCase() === incumbent) {
-		   			d.clicked = true; 
-				   	return "yellow";
-		   		}
-		   		else {
-		   			if (own_clicked[1][1]) { // just free agents
-		   				if (d.fantasyTeam === "Free Agent") {
-				   			d.displayed = 1; 
-						   	return d3.rgb(245, 206, 148);
-				   		} else {
-				   			d.displayed = 0;
-				   			return d3.rgb(245, 245, 245);
-				   		}
-		   			}
-		   			if (own_clicked[2][1]) { // just owned
-		   				if (d.fantasyTeam === "Free Agent") {
-				   			d.displayed = 0;
-				   			return d3.rgb(245, 245, 245);
-				   		} else {
-				   			d.displayed = 1;
-						   	return d3.rgb(94, 157, 120);
-						}
-		   			} 
-		   			if (own_clicked[0][1]) { // all clicked
-		   				if (d.fantasyTeam == "Free Agent") {
-						   	return d3.rgb(245, 206, 148);
-						} else {
-						   	return d3.rgb(94, 157, 120);
-						}
-					}
-		   		}
-		   });
-	} else { // reset back to original color scheme
-		restoreBars(false);
+// highlight specific players
+function highlightPlayer(player) {
+	for (i in players) {
+		if (players[i].playerid === player.playerid) {
+			players[i].clicked = true; 
+		}
 	}
+	restoreBars();
 }
