@@ -18,9 +18,16 @@ var inner_y = d3.scaleLinear().rangeRound([200, 0]); // why "round"?
 var main_g = svg.append("g")
 		   .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
+
 // Create line group
 var line_g = svg.append("g")
 		   .attr("transform", "translate(" + 500 + "," + 50 + ")"); // fix later (to be based on bar chart)
+
+
+var card_g = svg.append("g")
+				.attr("transform", "translate(" + 1000 + "," + 50 + ")");
+
+
 
 // Create line group (NEW)
 var clear_button = svg.append("g")
@@ -37,12 +44,49 @@ var own_clicked = [ ["All", true], ["Free Agent", false], ["Owned", false]];
 
 // All possible positions
 var positions = ["sp", "rp", "c", "first", "second", "third", "shortstop", "outfield", "util"];
+// Abbreviated positions
+var positions_abbr = ["SP", "RP", "C", "1B", "2B", "3B", "SS", "OF", "U"];
 
 
 // Tooltips
 var div = d3.select("body").append("div")
 			.attr("class","tooltip")
 			.style("opacity",0);
+
+
+// Dictionary that holds the associated color (via Fangraphs) of each MLB team
+var colorDict = {
+	"Orioles": "#eb4d20",
+	"Red Sox": "#c41335",
+	"White Sox": "#c0c0c0",
+	"Indians": "#d10e3a",
+	"Tigers": "#dc451c",
+	"Astros":"#dd6f1f",
+	"Royals":"#76b5f7",
+	"Angels":"#b51737",
+	"Twins":"#092952",
+	"Yankees":"#1d2940",
+	"Athletics":"#033831",
+	"Mariners":"#095b5b",
+	"Rays": "#fed631",
+	"Rangers":"#bb1528",
+	"Blue Jays":"#0741a2",
+	"Diamondbacks":"#a51c33",
+	"Braves":"#b51737",
+	"Cubs":"#043477",
+	"Reds":"#c40927",
+	"Rockies":"#333564",
+	"Dodgers":"#0d3d69",
+	"Marlins":"#f64441",
+	"Brewers":"#91744e",
+	"Mets":"#f85027",
+	"Phillies":"#b81233",
+	"Pirates":"#fbb73c",
+	"Padres":"#022246",
+	"Giants":"#f05636",
+	"Cardinals":"#c2223d",
+	"Nationals":"#b81730"
+}
 
 
 // Read in data, populate data structures, call viz.
@@ -77,6 +121,7 @@ d3.csv("toUse_01.csv", function(error, data) {
 			avgSalary: +d.avgsalary,
 			isPitcher: +d.ispitcher,
 			sp: +d.sp,
+			sp: +d.sp,
 			rp: +d.rp,
 			c: +d.catcher,
 			first: +d.first,
@@ -88,6 +133,8 @@ d3.csv("toUse_01.csv", function(error, data) {
 			displayed: 1, 
 			clicked: false
 		};
+
+		player.projectionSD = playerProjectionSD(player);
 
 		players.push(player); // add player to array of players
 
@@ -140,12 +187,17 @@ function createBarChart() {
 	 .attr("class", "axis axis--x")
 	 .attr("transform", "translate(0," + height + ")")
 	 .call(d3.axisBottom(x).tickValues([])) // create x-axis
-	 .append("text")
-	 .attr("transform", "translate(0," + height + ")")
-	 .attr("fill", "black")
-	 .style("text-anchor","middle")
-	 .text("Player"); // TODO: doesn't work
 
+
+	main_g.append("text")             
+      .attr("transform",
+            "translate(" + ((width/2)-40) + " ," + 
+                           (height + margin.top + 5) + ")")
+      .style("text-anchor", "middle")
+      .style("font", "13px sans-serif")
+      .text("Players");
+
+	
 	main_g.append("g")
 	 .attr("class", "axis axis--y") 
      .call(d3.axisLeft(y).ticks(10)) // create y-axis
@@ -153,7 +205,7 @@ function createBarChart() {
      .attr("transform", "rotate(-90)")
      .attr("y", 6)
      .attr("dy", "0.71em")
-     .attr("fill", "black")
+     .attr("fill", "#313639")
      .text("Projected Fantasy Points");
 
 	// Create bars
@@ -171,11 +223,13 @@ function createBarChart() {
      	if (d.displayed == 1) {
      		draw([d]); // Draw the line chart associated with the player
      		restoreBars(false);
+     		makePlayerCard(d);
      	}
      })
      .on("mouseover",function(d){
 		// Tooltips
 	     if(d.displayed == 1) {	
+	     	d3.select(this).style("cursor", "pointer");
 	     	div.transition()
 	     		.duration(0)
 	     		.style("opacity",.9);
@@ -184,7 +238,7 @@ function createBarChart() {
 	     		.style("top", (d3.event.clientY - 50) + "px");
 
 	     	d3.select(this)
-	     		.style("fill", "white");	
+	     		.style("fill", "antiquewhite");	
      	} 
 
      })
@@ -195,7 +249,7 @@ function createBarChart() {
 
 		    div.transition()
 		    	.duration(0)
-		     	.style("opacity",0);
+		     	.style("opacity", 0);
 
 		    restoreBars(false);
 	     }
@@ -204,11 +258,279 @@ function createBarChart() {
     restoreBars(false);
 }
 
+function playerProjectionSD(p) {
+	var variance = ( Math.pow((p.fpts_zips - p.fpts_avg), 2)  + Math.pow((p.fpts_steamer - p.fpts_avg), 2) + Math.pow((p.fpts_steamer600 - p.fpts_avg), 2) + Math.pow((p.fpts_depthcharts - p.fpts_avg), 2) + Math.pow((p.fpts_thebat - p.fpts_avg), 2) + Math.pow((p.fpts_atc  - p.fpts_avg), 2)) / 6;
+	var sd = Math.sqrt(variance);
+	return Math.round(sd * 100) / 100;
+}
+
+function makePlayerCard(player){
+
+	var position = "";
+
+	//find position
+	for (i in positions) {
+			if (player[positions[i]] == 1) {
+				if (position != "") {
+					position += " / ";
+				}
+				position += positions_abbr[i];
+			}
+		}
+
+	position = position.replace("/ U", "");
+
+	if (position == "") {
+		position = "UTIL";
+	}
+
+
+	// background box
+    card_g.append("a")
+		.append("rect")
+		.attr("x", 30)
+	    .attr("y", 50)
+	    .attr("width", 290)
+	    .attr("height", 300)
+	    .style("fill", "#313639")
+	    .style("stroke-width", 0);
+
+	// main box
+	card_g.append("a")
+		.append("rect")
+		.attr("x", 0)
+	    .attr("y", 10)
+	    .attr("width", 300)
+	    .attr("height", 300)
+	    .style("fill",function(){
+	    	
+	    	return colorDict[player.mlbTeam];
+	    	
+	    })
+	    .style("stroke", "#313639")
+	    .style("stroke-width", 1);
+
+	// the white box over that contains most of the information
+    card_g.append("a")
+		.append("rect")
+		.attr("x", 0)
+	    .attr("y", 100)
+	    .attr("width", 300)
+	    .attr("height", 230)
+	    .style("fill","antiquewhite")
+	    .style("stroke","#313639")
+	    .style("stroke-width", 1);
+
+   	// Name...................................................
+   	card_g.append("text")
+   		  .style("font", "25px sans-serif")
+   		  .attr("x", 7)
+   		  .attr("y", 40)
+   		  .style("fill","antiquewhite")
+   		  .text(player.name);
+
+   	// MLB Team...................................................
+
+   	// replace FA/Prospect with less clunky "-"
+   	// TODO: Find a more elegant solution to this
+   	var mlbt = player.mlbTeam;
+   	if (mlbt == "FA/Prospect") {
+   		mlbt = "-";
+   	}
+
+   	card_g.append("text")
+   		  .style("font", "15px sans-serif")
+   		  .attr("x", 7)
+   		  .attr("y", 64)
+   		  .style("fill","antiquewhite")
+   		  .text(mlbt);
+
+   	// Position...................................................
+
+   	// find how many links over to go
+   	var font_width = 9;
+   	var new_x = mlbt.length * font_width + 7;
+
+   	card_g.append("text")
+   		  .style("font", "20px sans-serif")
+   		  .attr("x", new_x + 5)
+   		  .attr("y", 64)
+   		  .style("fill", "antiquewhite")
+   		  .text(position);
+
+   	// Fantasy Team..................................................
+
+   	var color; 
+   	if (player.fantasyTeam === "Free Agent") {
+   		color = d3.rgb(245, 206, 148);
+	} else {
+		color = d3.rgb(94, 157, 120);
+	}
+
+   	card_g.append("text")
+   		  .attr("x", 7)
+   		  .attr("y", 87)
+   		  .style("font", "15px sans-serif")
+   		  .style("fill", color)
+   		  .text(player.fantasyTeam);
+
+   	// Salary
+   	if (player.salary != "0") {
+   		var new_x = player.fantasyTeam.length * font_width + 7;
+   		card_g.append("text")
+   			  .attr("x", new_x)
+   			  .attr("y", 87)
+   			  .style("fill", "antiquewhite")
+   			  .style("font", "18px sans-serif")
+   		  	  .text(" $" + player.salary);
+   	}
+
+   	// Owned Percent...............................................
+	card_g.append("text")
+	   		  .attr("x", 8)
+	   		  .attr("y", 125)
+	   		  .style("font", "15px Consolas")
+	   		  .attr("fill","#313639")
+	   		  .text("Own Percantage ")
+
+	card_g.append("text")
+	   		  .attr("x", 150)
+	   		  .attr("y", 125)
+	   		  .style("font", "15px Consolas")
+	   		  .attr("fill","#313639")
+	   		  .text(player.own.toString()+"%")
+
+  	// Average Value..............................................
+  	card_g.append("text")
+   		  .attr("x", 8)
+   		  .attr("y", 145)
+   		  .style("font", "15px Consolas")
+   		  .attr("fill","#313639")
+   		  .text("Average Value");
+
+   	card_g.append("text")
+   		  .attr("x", 150)
+   		  .attr("y", 145)
+   		  .style("font", "15px Consolas")
+   		  .attr("fill","#313639")
+   		  .text("$" + player.avgSalary.toString());
+
+   	// Performance history........................................
+   	card_g.append("line")
+   	      .attr("x1", 0)
+   	      .attr("x2", 300)
+   	      .attr("y1", 160)
+   	      .attr("y2", 160)
+   	      .attr("stroke", "#313639")
+   	      .attr("stroke-width", 1);
+
+   	var toDisplay = [];
+   	toDisplay[0] = ["Steamer", player.fpts_steamer];
+   	toDisplay[1] = ["The Bat", player.fpts_thebat];
+   	toDisplay[2] = ["Steamer600", player.fpts_steamer600];
+   	toDisplay[3] = ["ZIPS", player.fpts_zips];
+   	toDisplay[4] = ["ATC", player.fpts_atc];
+   	toDisplay[5] = ["Depth Charts", player.fpts_depthcharts];
+
+
+   	card_g.append("text")
+   		  .attr("x", 8)
+   		  .attr("y", 180)
+   		  .style("font", "13px Consolas")
+   		  .attr("fill", "#313639")
+   		  .text("PROJECTION");
+
+   	card_g.append("text")
+   		  .attr("x", 130)
+   		  .attr("y", 180)
+   		  .style("font", "13px Consolas")
+   		  .attr("fill", "#313639")
+   		  .text("FPTS");
+
+   	card_g.append("text")
+   		  .attr("x", 220)
+   		  .attr("y", 180)
+   		  .style("font", "13px Consolas")
+   		  .attr("fill", "#313639")
+   		  .text("S.D.");
+
+   	card_g.selectAll("hist")
+   		  .data(toDisplay)
+   		  .enter()
+   		  .append("text")
+   		  .attr("class", "hist")
+   		  .attr("x", 8)
+   		  .attr("y", function(d, i) {
+   		  	return 200 + i * 17;
+   		  })
+   		  .style("font", "13px Consolas")
+   		  .attr("fill", "#313639")
+   		  .text(function(d) {
+   		  		return d[0]; // return date
+   		  });
+
+   	card_g.selectAll("hist")
+   		  .data(toDisplay)
+   		  .enter()
+   		  .append("text")
+   		  .attr("class", "hist")
+   		  .attr("x", 130)
+   		  .attr("y", function(d, i) {
+   		  	return 200 + i * 17;
+   		  })
+   		  .style("font", "13px Consolas")
+   		  .attr("fill", "#313639")
+   		  .text(function(d) {
+   		  		return d[1]; // return fpts
+   		  });
+
+   	card_g.append("line")
+   	      .attr("x1", 195)
+   	      .attr("x2", 195)
+   	      .attr("y1", 194)
+   	      .attr("y2", 280)
+   	      .attr("stroke", "#313639")
+   	      .attr("stroke-width", 1);
+
+   	card_g.append("text")
+   		  .attr("x", 220)
+   		  .attr("y", 240)
+   		  .attr("fill", "#313639")
+   	      .style("font", "13px Consolas")
+   	      .text(player.projectionSD);
+
+
+   	// Fangraphs player card link.................................
+   	card_g.append("text")
+   		  .attr("x", 70)
+   		  .attr("y", 320)
+   		  .attr("fill", "#318CE7")
+   		  .style("font", "15px sans-serif")
+   		  .style("stroke-width", "3px")
+   		  .on("mouseover", function(d) {
+   		  		d3.select(this).style("text-decoration", "underline");
+		  		d3.select(this).style("cursor", "pointer");
+		  })
+		  .on("mouseout", function(d) {
+		  	d3.select(this).style("text-decoration", "none")
+		  })
+		  .on("click", function() { 
+		  	console.log("here");
+		  	window.open("https://www.fangraphs.com/statss.aspx?playerid=" + player.playerid.toString()); 
+		  })
+   		  .text("Fangraphs Player Page");
+
+
+}
+
+
+
+
 // get RGB value associated with ownership status
 function getOwnershipColor(status, shaded) {
 	if (!shaded) {
 		if (status === "All") {
-	  		return "white";
+	  		return "antiquewhite";
   		}
   		if (status === "Free Agent") {
   			return d3.rgb(245, 206, 148);
@@ -218,7 +540,7 @@ function getOwnershipColor(status, shaded) {
 			}
 	} else {
 		if (status === "All") {
-	  		return d3.rgb(220, 220, 220);
+	  		return d3.rgb(198, 188, 163);
   		}
   		if (status === "Free Agent") {
   			return d3.rgb(195, 156, 98);
@@ -227,6 +549,10 @@ function getOwnershipColor(status, shaded) {
   			return d3.rgb(44, 107, 70); 
 			}
 	}
+}
+
+function resetPlayerCard() {
+	card_g.selectAll("*").remove()
 }
 
 // TODO: clean this logic up (?)
@@ -285,7 +611,7 @@ function createOwnershipFilter() {
 		  			return 0;
 		  		}
 		  	})
-		  	.attr("stroke", "black")
+		  	.attr("stroke", "#313639")
 		  	.on("click", function(d) {
 
 		  		// Unclick all other buttons
@@ -299,6 +625,7 @@ function createOwnershipFilter() {
 		  		restoreBars(false);
 		  	})
 		  	.on("mouseover", function(d) {
+		  		d3.select(this).style("cursor", "pointer");
 		  		// darken color
 		  		if (!d[1]) { // if the button isn't clicked
 		  			d3.select(this).style("fill", function(d) {
@@ -331,7 +658,7 @@ function createOwnershipFilter() {
 		  })
 		  .attr("fill", function(d) {
 		  		if (d[0] == "All") { // special case for all because circle fill (white) differs from font color (black)
-		  			return "black";
+		  			return "#313639";
 		  		} else {
 		  			return getOwnershipColor(d[0], false);
 		  		}
@@ -379,23 +706,24 @@ function createPositionalFilter() {
 		.attr("r", 8)
 		.attr("fill", function(d) {
 			if (d[1]) {
-				d3.select(this).style("fill", "black");
+				d3.select(this).style("fill", "#313639");
 			} else {
-				d3.select(this).style("fill", "white");
+				d3.select(this).style("fill", "antiquewhite");
 			}
 			makePositionalTitles();
 		})
 		.attr("stroke-width", .7)
-		.attr("stroke", "black")
+		.attr("stroke", "#313639")
 		.on("mouseover", function(d) {
+			d3.select(this).style("cursor", "pointer");
 			d3.select(this).style("fill", d3.rgb(220, 220, 220));
 			makePositionalTitles();
 		})
 		.on("mouseout", function(d) {
 			if (d[1]) {
-				d3.select(this).style("fill", "black");
+				d3.select(this).style("fill", "#313639");
 			} else {
-				d3.select(this).style("fill", "white");
+				d3.select(this).style("fill", "antiquewhite");
 			}
 			makePositionalTitles();
 		})
@@ -404,11 +732,11 @@ function createPositionalFilter() {
 			d[1] = !d[1];
 		 	if (d[1]) {
 		 		// flip the colors
-		 		d3.select(this).style("fill", "black");
+		 		d3.select(this).style("fill", "#313639");
 		 		makePositionalTitles();
 		 	} else {
 		 		// flip the colors
-		 		d3.select(this).style("fill", "white");
+		 		d3.select(this).style("fill", "antiquewhite");
 		 		makePositionalTitles();
 		 	}
 
@@ -434,9 +762,9 @@ function makePositionalTitles() {
 		.attr("text-anchor", "middle")
 		.attr("fill", function(d) {
 			if (d[1]) {
-				return "white";
+				return "antiquewhite";
 			} else {
-				return "black";
+				return "#313639";
 			}
 		})
 		.text(function(d) {
@@ -543,6 +871,14 @@ function draw(playersToDraw) {
    		if (playersToDraw[i] != null) {
    			var currentPlayer = playersToDraw[i];
 
+   			// Draw the reference circles
+
+   			var referenceCircles = line_g.selectAll("circle_ref")
+								.data(currentPlayer.fpts_hist)
+								.enter()
+								.append("g")
+								.attr("class", "circle_ref");
+
 		    var proj_lines = line_g.selectAll("proj_line")
 						  .data(playersToDraw[i].fpts_proj)
 						  .enter()
@@ -579,6 +915,12 @@ function draw(playersToDraw) {
 				   		return d3.rgb(94, 157, 120);
 				   	}
 			    })
+			    .on("mouseover", function(d) {
+			  		d3.select(this).style("cursor", "pointer");
+			  	})
+			  	.on("click", function(d) {
+			  		makePlayerCard(currentPlayer);
+			  	})
 			    .text(currentPlayer.name);
    		}
    }		
@@ -586,20 +928,20 @@ function draw(playersToDraw) {
 
 // function draw
 function drawClearButton() {
-	// Draw erase button
-    clear_button.selectAll("circle_clear")
-    			.data([1])
-				.enter()
-				.append("circle")
+
+	// Draw clear button
+    clear_button.append("circle")
 				.attr("class", "circle_clear")
 			  	.attr("cx", 175)
 			  	.attr("cy", 250)
 			  	.attr("r", 15)
-			  	.attr("stroke-width", 1)
-			  	.attr("stroke", "black")
-			  	.attr("fill", "white")
+			  	.attr("fill", "indianred")
+			  	.on("mouseover", function(d) {
+			  		d3.select(this).style("cursor", "pointer");
+			  	})
 			  	.on("click", function(d) {
 			  		restoreBars(true);
+			  		resetPlayerCard();
 			  		restoreLineChart();			  		
 			  	});
 
@@ -609,13 +951,17 @@ function drawClearButton() {
 				.attr("y", 254)
 				.style("font", "10px sans-serif")
 				.attr("text-anchor", "middle")
+				.attr("fill", "antiquewhite")
 				.text("clear")
+				.on("mouseover", function(d) {
+					d3.select(this).style("cursor", "pointer");
+				})
 				.on("click", function(d) {
 			  		restoreBars(true);
+			  		resetPlayerCard();
 			  		restoreLineChart();			  		
 			  	});
 }
-
 
 function restoreBars(unclickAll) {
 	svg.selectAll("rect")
@@ -630,7 +976,7 @@ function restoreBars(unclickAll) {
 
 	   		if (d.clicked) { // if the player's line graph is displayed
 	   			d.displayed = 1; 
-	   			return "yellow";
+	   			return "indianred";
 
 	   		} else {
 
@@ -642,13 +988,13 @@ function restoreBars(unclickAll) {
 						   	return d3.rgb(245, 206, 148);
 				   		} else {
 				   			d.displayed = 0;
-				   			return d3.rgb(245, 245, 245);
+				   			return d3.rgb(250, 245, 230);
 				   		}
 		   			}
 		   			if (own_clicked[2][1]) { // if "Owned" button is clicked
 		   				if (d.fantasyTeam === "Free Agent") {
 				   			d.displayed = 0;
-				   			return d3.rgb(245, 245, 245);
+				   			return d3.rgb(250, 245, 230);
 				   		} else {
 				   			d.displayed = 1;
 						   	return d3.rgb(94, 157, 120);
@@ -664,7 +1010,7 @@ function restoreBars(unclickAll) {
 		   			}
 		   		} else {
 		   			d.displayed = 0;
-				   	return d3.rgb(245, 245, 245);
+				   	return d3.rgb(250, 245, 230);
 		   		}
 	   		}
 
@@ -697,7 +1043,6 @@ d3.select("#recommender")
 			}
 			
 		} else {
-			restoreLineChart(); // TODO: Keep this? 
 			restoreBars(false);
 		}
 	})
@@ -840,6 +1185,7 @@ function handlePlayerSearch(playerName) {
 	if (found) {
 		draw(p);
 		for (k in p) {
+			makePlayerCard(p[k])
 			highlightPlayer(p[k]);
 		}
 	}
